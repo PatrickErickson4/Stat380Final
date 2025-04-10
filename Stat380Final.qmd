@@ -1,0 +1,42 @@
+---
+title: "Stat 380 Final"
+author: "Patrick Erickson, Aiden Shindel, Jordan Brophy"
+format: 
+  pdf:
+    cite-method: biblatex
+    pdf-engine: xelatex  
+editor: visual
+bibliography: references.bib
+csl: mla.csl
+nocite: |
+  @*
+appendix: true
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: true
+---
+
+# Predicting Drowsy Driving: Can we Machine Learning Model to be able to Predict Drowsiness in Drivers?
+
+## Introduction
+
+### Intuition Behind the Choice of Data Set
+
+
+-   The data set must be large to be able to get a good testing pool.
+-   The data set has meaningful predictors are practically relevant to our test case.
+-   The data set contains a drousy/awake variable
+-   The data set follows **F.A.I.R.** and **C.A.R.E.** principles.
+
+
+### Ethical Considerations in the Choice of our Data Set
+
+In order to ensure the ethical feasibility of the data set, we also scrutinized our selection to follow the **F.A.I.R.** and **C.A.R.E.** principles as discussed in class.
+
+Since we had obtained our data from the open-source data hub Kaggle, we can ensure that anyone can **find** and **access** this data set through Kaggle's use guidelines, stating for a free distribution of data sets that are published for public use to practice ML or data analysis on. The data is also highly versatile, taking a csv format. This is one of the most **interoperable** formats there are for data sets, especially for our use-case in R, where reading in a csv is already built into the base. Lastly, the data set can be **reused** for multiple types of data analysis, and will always remain relevant for its time period.
+
+In terms of **collective benefit**, the data set contributes to an overall understanding of driving without harming any individuals , due to the fact that it is simply raw data. Secondly, as I had stated the author's name, there is clearly ownership over the data set coming from kaggle as   mentioned, showing proper **Authority to Control**. Since proper attributions are maintained, it also falls under the **Responsibility and Ethics** guidelines of the C.A.R.E. principles.
+
+The dataset can be found [here](https://www.kaggle.com/datasets/yasharjebraeily/drowsy-detection-dataset?select=Drowsy_datset).
