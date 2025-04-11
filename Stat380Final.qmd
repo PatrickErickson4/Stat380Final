@@ -24,12 +24,10 @@ execute:
 
 ### Intuition Behind the Choice of Data Set
 
-
 -   The data set must be large to be able to get a good testing pool.
 -   The data set has meaningful predictors are practically relevant to our test case.
--   The data set contains a drousy/awake variable
+-   The data set contains a drowsy/awake variable
 -   The data set follows **F.A.I.R.** and **C.A.R.E.** principles.
-
 
 ### Ethical Considerations in the Choice of our Data Set
 
@@ -37,6 +35,90 @@ In order to ensure the ethical feasibility of the data set, we also scrutinized 
 
 Since we had obtained our data from the open-source data hub Kaggle, we can ensure that anyone can **find** and **access** this data set through Kaggle's use guidelines, stating for a free distribution of data sets that are published for public use to practice ML or data analysis on. The data is also highly versatile, taking a csv format. This is one of the most **interoperable** formats there are for data sets, especially for our use-case in R, where reading in a csv is already built into the base. Lastly, the data set can be **reused** for multiple types of data analysis, and will always remain relevant for its time period.
 
-In terms of **collective benefit**, the data set contributes to an overall understanding of driving without harming any individuals , due to the fact that it is simply raw data. Secondly, as I had stated the author's name, there is clearly ownership over the data set coming from kaggle as   mentioned, showing proper **Authority to Control**. Since proper attributions are maintained, it also falls under the **Responsibility and Ethics** guidelines of the C.A.R.E. principles.
+In terms of **collective benefit**, the data set contributes to an overall understanding of driving without harming any individuals , due to the fact that it is simply raw data. Secondly, as I had stated the author's name, there is clearly ownership over the data set coming from kaggle as mentioned, showing proper **Authority to Control**. Since proper attributions are maintained, it also falls under the **Responsibility and Ethics** guidelines of the C.A.R.E. principles.
 
 The dataset can be found [here](https://www.kaggle.com/datasets/yasharjebraeily/drowsy-detection-dataset?select=Drowsy_datset).
+
+### Cleaning
+
+**Aiden, Jordan, Here are some notes for yall. We gotta make sure we handling pulling PNGs and JPEG (not jpg).**
+
+I had to change the dataset name from Drowsy_datset to Drowsy_dataset
+
+```{r}
+#|Warning: FALSE
+library(png)
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggcorrplot)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+```
+
+
+```{r}
+train_drowsy_dir <- "Drowsy_datset/train/DROWSY"
+train_natural_dir <- "Drowsy_datset/train/NATURAL"
+
+# Check files in each directory
+drowsy_files <- list.files(train_drowsy_dir, pattern = "\\.png$", full.names = TRUE)
+natural_files <- list.files(train_natural_dir, pattern = "\\.png$", full.names = TRUE)
+
+# Assuming drowsy_files and natural_files are already defined
+# For DROWSY files:
+
+# For DROWSY files: Save the first 10 file names in a data frame.
+df_drowsy <- data.frame(File = head(drowsy_files, 5), stringsAsFactors = FALSE)
+df_natural <- data.frame(File = head(natural_files, 5), stringsAsFactors = FALSE)
+
+# Print the data frames (since they only have 10 rows, printing them prints the head)
+kable(df_natural, caption = "First 5 NATURAL Files:")
+kable(df_drowsy, caption = "First 5 DROWSY Files:")
+
+```
+
+This is showing that some files had extra attachments to them. We need to remove the .jpeg so that they are all one format.
+
+
+```{r}
+library(jpeg)
+check_png <- function(filepath) {
+  tryCatch({
+    img <- png::readPNG(filepath)
+    return(TRUE)
+  }, error = function(e) {
+    return(FALSE)
+  })
+}
+
+# Check a few files with readJPEG:
+for (f in drowsy_files[1:5]) {
+  cat(f, " => PNG check: ", check_png(f), "\n")
+}
+
+
+library(jpeg)
+
+check_jpeg <- function(filepath) {
+  tryCatch({
+    jpeg::readJPEG(filepath)
+    return(TRUE)
+  }, error = function(e) {
+    return(FALSE)
+  })
+}
+
+# Check a few files with readJPEG:
+for (f in drowsy_files[1:5]) {
+  cat(f, " => JPEG check: ", check_jpeg(f), "\n")
+}
+
+```
+We'll have handle BOTH.
+
+```{r}
+
+
+```
