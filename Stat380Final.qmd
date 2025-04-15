@@ -70,8 +70,8 @@ Note that the dataset name is Drowsy_datset
 ```{r}
 train_drowsy_dir <- "Drowsy_datset/train/DROWSY"
 train_natural_dir <- "Drowsy_datset/train/NATURAL"
-test_drowsy_dir <- "Drowsy_datset/test/NATURAL"
-test_natural_dir <- "Drowsy_datset/test/DROWSY"
+test_drowsy_dir <- "Drowsy_datset/test/DROWSY"
+test_natural_dir <- "Drowsy_datset/test/NATURAL"
 
 # Check files in each directory
 drowsy_files_train <- list.files(train_drowsy_dir, pattern = "\\.png$", full.names = TRUE)
@@ -166,7 +166,7 @@ image_dataset_train <- data.frame(
 
 image_dataset_test <- data.frame(
   image = I(c(loaded_images_drowsy_test, loaded_images_natural_test)),
-  label = c(rep("Natural", length(loaded_images_drowsy_test)), rep("Drowsy", length(loaded_images_natural_test))),
+  label = c(rep("Drowsy", length(loaded_images_drowsy_test)), rep("Natural", length(loaded_images_natural_test))),
   stringsAsFactors = FALSE
 )
 ```
