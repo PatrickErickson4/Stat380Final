@@ -1,0 +1,5 @@
+model,sigma,C
+SVMNoFeatureEngineering,2.8322712821645e-4,1
+SVMNoFeatureEngineeringPCA,0.0032232461178405,1
+SVMWithFeatureEngineering,2.3490783759367e-4,1
+SVMWithFeatureEngineeringPCA,4.4264792866448e-4,1
