@@ -379,20 +379,18 @@ plot_list <- lapply(1:9, function(i) {
 # Arrange and display the plots in a 3x3 grid
 grid_arrange_result <- grid.arrange(grobs = plot_list, ncol = 3, nrow = 3)
 
+ggsave(
+  filename = "PlotsAndPictures/Faces/trainNoFeatureEngineering.png",  # wherever you like
+  plot     = grid_arrange_result,                                   # your arranged grob
+  width    = 8,                                           # adjust size
+  height   = 8,
+  units    = "in",
+  dpi      = 300
+)
 
 ```
 
-```{r}
 
-# Create list of plots for the first 9 images
-plot_list <- lapply(1:9, function(i) {
-  plot_image_ggplot(testNoFeatureEngineering[i, ])
-})
-
-# Arrange and display the plots in a 3x3 grid
-grid_arrange_result <- grid.arrange(grobs = plot_list, ncol = 3, nrow = 3)
-
-```
 
 ```{r}
 # Create list of plots for the first 9 images
@@ -402,6 +400,15 @@ plot_list <- lapply(1:9, function(i) {
 
 # Arrange and display the plots in a 3x3 grid
 grid_arrange_result <- grid.arrange(grobs = plot_list, ncol = 3, nrow = 3)
+
+ggsave(
+  filename = "PlotsAndPictures/Faces/trainWtihFeatureEngineeringUnscaled.png",  # wherever you like
+  plot     = grid_arrange_result,                                   # your arranged grob
+  width    = 8,                                           # adjust size
+  height   = 8,
+  units    = "in",
+  dpi      = 300
+)
 ```
 
 We need to change the scaling back to \[0,1\] after feature engineering.
@@ -421,17 +428,18 @@ plot_list <- lapply(1:9, function(i) {
 
 # Arrange and display the plots in a 3x3 grid
 grid_arrange_result <- grid.arrange(grobs = plot_list, ncol = 3, nrow = 3)
+
+ggsave(
+  filename = "PlotsAndPictures/Faces/trainWithFeatureEngineering.png",  # wherever you like
+  plot     = grid_arrange_result,                                   # your arranged grob
+  width    = 8,                                           # adjust size
+  height   = 8,
+  units    = "in",
+  dpi      = 300
+)
+
 ```
 
-```{r}
-# Create list of plots for the first 9 images
-plot_list <- lapply(1:9, function(i) {
-  plot_image_ggplot(testWithFeatureEngineering[i, ])
-})
-
-# Arrange and display the plots in a 3x3 grid
-grid_arrange_result <- grid.arrange(grobs = plot_list, ncol = 3, nrow = 3)
-```
 
 
 Save our datasets here.
@@ -471,9 +479,9 @@ pca_df <- data.frame(
 )
 
 # Optionally, determine the number of components needed to explain at least 95% of the variance.
-target_threshold <- 0.95
-n_components <- which(cumulative_variance >= target_threshold)[1]
-cat(sprintf("Number of components to reach at least %.0f%% variance explained: %d", target_threshold * 100, n_components))
+label_threshold <- 0.95
+n_components <- which(cumulative_variance >= label_threshold)[1]
+cat(sprintf("Number of components to reach at least %.0f%% variance explained: %d", label_threshold * 100, n_components))
 
 ```
 
@@ -492,6 +500,12 @@ scree_plot <- ggplot(pca_df, aes(x = PC)) +
 
 # Display the plot
 print(scree_plot)
+ggsave(
+  filename = "PlotsAndPictures/PCA_ScreePlots/NoPreprocessingScree.png",
+  plot = scree_plot,
+  width = 8,
+  height = 6
+)
 
 ```
 
@@ -564,6 +578,12 @@ scree_plot <- ggplot(pca_df, aes(x = PC)) +
 
 # Display the plot
 print(scree_plot)
+ggsave(
+  filename = "PlotsAndPictures/PCA_ScreePlots/PreprocessingScree.png",
+  plot = scree_plot,
+  width = 8,
+  height = 6
+)
 ```
 
 
@@ -2629,6 +2649,1749 @@ if(length(levels_labels) == 2) {
 }
 
 ```
+
+
+### Data Metrics Combining
+SVM classification report construction and best hyperparameter csv construction
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path
+base_path <- "Base_Models_Data/SVM/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_SVMNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "SVMNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "SVMCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "SVMHyperparameters.csv"))
+
+
+```
+XGBoost classification report construction and best hyperparameter csv construction
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path for XGBoost
+base_path <- "Base_Models_Data/XGBoost/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_XGBoostNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "XGBoostNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "XGBoostCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "XGBoostHyperparameters.csv"))
+
+```
+RandomForest classification report construction and best hyperparameter csv construction
+
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path for RandomForest
+base_path <- "Base_Models_Data/Random_Forest/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_RandomForestNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "RandomForestNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "RandomForestCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "RandomForestHyperparameters.csv"))
+
+```
+
+Combine all to make the final base model report:
+```{R}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define file paths for each combined classification report
+rf_report <- "Base_Models_Data/Random_Forest/RandomForestCombinedClassificationReport.csv"
+xgb_report <- "Base_Models_Data/XGBoost/XGBoostCombinedClassificationReport.csv"
+svm_report <- "Base_Models_Data/SVM/SVMCombinedClassificationReport.csv"
+
+# Read each CSV into a data frame
+rf_df <- read_csv(rf_report, show_col_types = FALSE)
+xgb_df <- read_csv(xgb_report, show_col_types = FALSE)
+svm_df <- read_csv(svm_report, show_col_types = FALSE)
+
+# Rbind (stack) the three data frames into one and then sort by accuracy then ROC (both in descending order)
+final_report <- bind_rows(rf_df, xgb_df, svm_df) %>%
+  arrange(desc(Accuracy), desc(AUC))
+
+# Define the output path and write the final combined data frame as CSV
+output_path <- "Base_Models_Data/FinalBaseModelReport.csv"
+write_csv(final_report, output_path)
+
+
+```
+
+Combine Hyperparameters to a final report
+```{R}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define file paths for each combined classification report
+rf_report <- "Base_Models_Data/Random_Forest/RandomForestHyperparameters.csv"
+xgb_report <- "Base_Models_Data/XGBoost/XGBoostHyperparameters.csv"
+svm_report <- "Base_Models_Data/SVM/SVMHyperparameters.csv"
+
+# Read each CSV into a data frame
+rf_df <- read_csv(rf_report, show_col_types = FALSE)
+xgb_df <- read_csv(xgb_report, show_col_types = FALSE)
+svm_df <- read_csv(svm_report, show_col_types = FALSE)
+
+
+# Define the output path and write the final combined data frame as CSV
+write_csv(rf_df, "Base_Models_Data/RandomForestHyperparameters.csv")
+write_csv(xgb_df, "Base_Models_Data/XGBoostHyperparameters.csv")
+write_csv(svm_df, "Base_Models_Data/SVMHyperparameters.csv")
+```
+### AUCROC Plot Construction
+SVM Plot
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(ggplot2)
+
+# 1) Trapezoidal rule for AUC
+calc_auc <- function(x, y) {
+  sum(diff(x) * (head(y, -1) + tail(y, -1)) / 2)
+}
+
+# 2) Define ROCData file paths (in any order) and their descriptive labels
+roc_files <- c(
+  "Base_Models_Data/SVM/ROCData_SVMNoFeatureEngineering.csv",
+  "Base_Models_Data/SVM/ROCData_SVMNoFeatureEngineeringPCA.csv",
+  "Base_Models_Data/SVM/ROCData_SVMWithFeatureEngineering.csv",
+  "Base_Models_Data/SVM/ROCData_SVMWithFeatureEngineeringPCA.csv"
+)
+
+# We'll map the files to labels initially (the final legend order will follow AUC)
+curve_labels <- c(
+  "No pre-processing + No feature engineering",
+  "No pre-processing + Feature engineering",
+  "Pre-processing + No feature engineering",
+  "Pre-processing + Feature engineering"
+)
+
+# 3) Read, compute AUC, store results
+roc_list <- list()
+auc_values <- numeric(length(roc_files))
+
+for(i in seq_along(roc_files)) {
+  df <- read_csv(roc_files[i], show_col_types = FALSE) %>%
+    arrange(fpr)  # ensure ascending fpr
+  
+  this_auc <- calc_auc(df$fpr, df$tpr)
+  auc_values[i] <- this_auc
+  
+  df <- df %>%
+    mutate(AUC = this_auc,
+           Curve = curve_labels[i])
+  
+  roc_list[[i]] <- df
+}
+
+# 4) Combine all ROC data
+roc_data <- bind_rows(roc_list)
+
+# 5) Determine factor order by descending AUC
+auc_summary <- roc_data %>%
+  group_by(Curve) %>%
+  summarize(AUC = unique(AUC), .groups = "drop") %>%
+  arrange(desc(AUC))
+
+# Convert "Curve" to a factor with levels in descending AUC order
+roc_data$Curve <- factor(roc_data$Curve, levels = auc_summary$Curve, ordered = TRUE)
+
+# 6) Define a custom color vector to match the descending AUC order.
+#    Highest AUC -> green, second -> blue, third -> purple, fourth -> red
+color_vec <- c("green", "blue", "purple", "red")
+
+# 7) Build annotation data for bottom-right corner, stacked top-to-bottom
+ann_df <- auc_summary %>%
+  mutate(
+    x = 0.98,
+    # space them out vertically (adjust spacing to taste)
+    y = seq(0.15, by = -0.05, length.out = nrow(auc_summary)),
+    label = paste("AUC =", round(AUC, 3))
+  )
+
+# 8) Plot all curves
+p <- ggplot(
+    roc_data,
+    aes(
+      x = fpr, 
+      y = tpr, 
+      color = Curve,
+      group = Curve  # ensures ggplot doesn't use shapes for grouping
+    )
+  ) +
+  # Use geom_line with key_glyph="path" to make sure the legend is drawn as lines
+  geom_line(size = 1, key_glyph = "path") +
+  # Diagonal line for no-discrimination
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black") +
+  labs(
+    title = "SVM model AUC ROC Plot",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    color = "Model"
+  ) +
+  theme_minimal() +
+  # Apply your custom color mapping, in the order of the factor levels
+  scale_color_manual(values = color_vec) +
+  # If a discrete shape scale is being auto-added, turn it off:
+  scale_shape_discrete(guide = "none") +
+  # Force the legend to display only colored lines (no shapes, no letters)
+  guides(color = guide_legend(override.aes = list(
+    shape = NA,        # no shape
+    linetype = 1,      # a regular line
+    key_glyph = "path" # and definitely use a line glyph
+  ))) +
+  # Add AUC text in the bottom-right corner
+  geom_text(
+    data = ann_df,
+    aes(x = x, y = y, label = label, color = Curve),
+    hjust = 1,  # right-align
+    size = 4
+  )
+
+# 9) Save the plot
+ggsave(
+  filename = "PlotsAndPictures/Combined_AUCROCPlots/SVMPlot.png",
+  plot = p,
+  width = 8,
+  height = 6
+)
+
+```
+
+XGBoost Plot
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(ggplot2)
+
+# 1) Trapezoidal rule for AUC
+calc_auc <- function(x, y) {
+  sum(diff(x) * (head(y, -1) + tail(y, -1)) / 2)
+}
+
+# 2) Define ROCData file paths (in any order) and their descriptive labels
+roc_files <- c(
+  "Base_Models_Data/XGBoost/ROCData_XGBoostNoFeatureEngineering.csv",
+  "Base_Models_Data/XGBoost/ROCData_XGBoostNoFeatureEngineeringPCA.csv",
+  "Base_Models_Data/XGBoost/ROCData_XGBoostWithFeatureEngineering.csv",
+  "Base_Models_Data/XGBoost/ROCData_XGBoostWithFeatureEngineeringPCA.csv"
+)
+
+# We'll map the files to labels initially (the final legend order will follow AUC)
+curve_labels <- c(
+  "No pre-processing + No feature engineering",
+  "No pre-processing + Feature engineering",
+  "Pre-processing + No feature engineering",
+  "Pre-processing + Feature engineering"
+)
+
+# 3) Read, compute AUC, store results
+roc_list <- list()
+auc_values <- numeric(length(roc_files))
+
+for(i in seq_along(roc_files)) {
+  df <- read_csv(roc_files[i], show_col_types = FALSE) %>%
+    arrange(fpr)  # ensure ascending fpr
+  
+  this_auc <- calc_auc(df$fpr, df$tpr)
+  auc_values[i] <- this_auc
+  
+  df <- df %>%
+    mutate(AUC = this_auc,
+           Curve = curve_labels[i])
+  
+  roc_list[[i]] <- df
+}
+
+# 4) Combine all ROC data
+roc_data <- bind_rows(roc_list)
+
+# 5) Determine factor order by descending AUC
+auc_summary <- roc_data %>%
+  group_by(Curve) %>%
+  summarize(AUC = unique(AUC), .groups = "drop") %>%
+  arrange(desc(AUC))
+
+# Convert "Curve" to a factor with levels in descending AUC order
+roc_data$Curve <- factor(roc_data$Curve, levels = auc_summary$Curve, ordered = TRUE)
+
+# 6) Define a custom color vector to match the descending AUC order.
+#    Highest AUC -> green, second -> blue, third -> purple, fourth -> red
+color_vec <- c("green", "blue", "purple", "red")
+
+# 7) Build annotation data for bottom-right corner, stacked top-to-bottom
+ann_df <- auc_summary %>%
+  mutate(
+    x = 0.98,
+    # space them out vertically (adjust spacing to taste)
+    y = seq(0.15, by = -0.05, length.out = nrow(auc_summary)),
+    label = paste("AUC =", round(AUC, 3))
+  )
+
+# 8) Plot all curves
+p <- ggplot(
+    roc_data,
+    aes(
+      x = fpr, 
+      y = tpr, 
+      color = Curve,
+      group = Curve  # ensures ggplot doesn't use shapes for grouping
+    )
+  ) +
+  # Use geom_line with key_glyph="path" to make sure the legend is drawn as lines
+  geom_line(size = 1, key_glyph = "path") +
+  # Diagonal line for no-discrimination
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black") +
+  labs(
+    title = "XGBoost model AUC ROC Plot",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    color = "Model"
+  ) +
+  theme_minimal() +
+  # Apply your custom color mapping, in the order of the factor levels
+  scale_color_manual(values = color_vec) +
+  # If a discrete shape scale is being auto-added, turn it off:
+  scale_shape_discrete(guide = "none") +
+  # Force the legend to display only colored lines (no shapes, no letters)
+  guides(color = guide_legend(override.aes = list(
+    shape = NA,        # no shape
+    linetype = 1,      # a regular line
+    key_glyph = "path" # and definitely use a line glyph
+  ))) +
+  # Add AUC text in the bottom-right corner
+  geom_text(
+    data = ann_df,
+    aes(x = x, y = y, label = label, color = Curve),
+    hjust = 1,  # right-align
+    size = 4
+  )
+
+# 9) Save the plot
+ggsave(
+  filename = "PlotsAndPictures/Combined_AUCROCPlots/XGBoostPlot.png",
+  plot = p,
+  width = 8,
+  height = 6
+)
+
+```
+
+Random Forest Plot
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(ggplot2)
+
+# 1) Trapezoidal rule for AUC
+calc_auc <- function(x, y) {
+  sum(diff(x) * (head(y, -1) + tail(y, -1)) / 2)
+}
+
+# 2) Define ROCData file paths (in any order) and their descriptive labels
+roc_files <- c(
+  "Base_Models_Data/Random_Forest/ROCData_RandomForestNoFeatureEngineering.csv",
+  "Base_Models_Data/Random_Forest/ROCData_RandomForestNoFeatureEngineeringPCA.csv",
+  "Base_Models_Data/Random_Forest/ROCData_RandomForestWithFeatureEngineering.csv",
+  "Base_Models_Data/Random_Forest/ROCData_RandomForestWithFeatureEngineeringPCA.csv"
+)
+
+# We'll map the files to labels initially (the final legend order will follow AUC)
+curve_labels <- c(
+  "No pre-processing + No feature engineering",
+  "No pre-processing + Feature engineering",
+  "Pre-processing + No feature engineering",
+  "Pre-processing + Feature engineering"
+)
+
+# 3) Read, compute AUC, store results
+roc_list <- list()
+auc_values <- numeric(length(roc_files))
+
+for(i in seq_along(roc_files)) {
+  df <- read_csv(roc_files[i], show_col_types = FALSE) %>%
+    arrange(fpr)  # ensure ascending fpr
+  
+  this_auc <- calc_auc(df$fpr, df$tpr)
+  auc_values[i] <- this_auc
+  
+  df <- df %>%
+    mutate(AUC = this_auc,
+           Curve = curve_labels[i])
+  
+  roc_list[[i]] <- df
+}
+
+# 4) Combine all ROC data
+roc_data <- bind_rows(roc_list)
+
+# 5) Determine factor order by descending AUC
+auc_summary <- roc_data %>%
+  group_by(Curve) %>%
+  summarize(AUC = unique(AUC), .groups = "drop") %>%
+  arrange(desc(AUC))
+
+# Convert "Curve" to a factor with levels in descending AUC order
+roc_data$Curve <- factor(roc_data$Curve, levels = auc_summary$Curve, ordered = TRUE)
+
+# 6) Define a custom color vector to match the descending AUC order.
+#    Highest AUC -> green, second -> blue, third -> purple, fourth -> red
+color_vec <- c("green", "blue", "purple", "red")
+
+# 7) Build annotation data for bottom-right corner, stacked top-to-bottom
+ann_df <- auc_summary %>%
+  mutate(
+    x = 0.98,
+    # space them out vertically (adjust spacing to taste)
+    y = seq(0.15, by = -0.05, length.out = nrow(auc_summary)),
+    label = paste("AUC =", round(AUC, 3))
+  )
+
+# 8) Plot all curves
+p <- ggplot(
+    roc_data,
+    aes(
+      x = fpr, 
+      y = tpr, 
+      color = Curve,
+      group = Curve  # ensures ggplot doesn't use shapes for grouping
+    )
+  ) +
+  # Use geom_line with key_glyph="path" to make sure the legend is drawn as lines
+  geom_line(size = 1, key_glyph = "path") +
+  # Diagonal line for no-discrimination
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black") +
+  labs(
+    title = "Random Forest model AUC ROC Plot",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    color = "Model"
+  ) +
+  theme_minimal() +
+  # Apply your custom color mapping, in the order of the factor levels
+  scale_color_manual(values = color_vec) +
+  
+  scale_shape_discrete(guide = "none") +
+  # Force the legend to display only colored lines (no shapes, no letters)
+  guides(color = guide_legend(override.aes = list(
+    shape = NA,        # no shape
+    linetype = 1,      # a regular line
+    key_glyph = "path" # and definitely use a line glyph
+  ))) +
+  # Add AUC text in the bottom-right corner
+  geom_text(
+    data = ann_df,
+    aes(x = x, y = y, label = label, color = Curve),
+    hjust = 1,  # right-align
+    size = 4
+  )
+
+# 9) Save the plot
+ggsave(
+  filename = "PlotsAndPictures/Combined_AUCROCPlots/RandomForestPlot.png",
+  plot = p,
+  width = 8,
+  height = 6
+)
+
+```
+
+
+### Stacking Classifier
+
+
+Logistic Regression
+```{r}
+# Load necessary libraries from your previous work
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggcorrplot)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(knitr)
+library(purrr)
+library(kernlab)
+library(BiocManager)
+library(readr)
+library(doParallel)
+library(EBImage)
+library(pROC)
+
+# Additional libraries for the current code block
+library(xgboost)       # For XGBoost-related functionality
+library(randomForest) 
+trainNoFeatureEngineeringPCA <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+testNoFeatureEngineeringPCA <- read_csv("Prepped_Data/testNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+trainNoFeatureEngineering <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
+testNoFeatureEngineering <- read_csv("Prepped_Data/testNoFeatureEngineering.csv", show_col_types = FALSE)
+trainWithFeatureEngineering <- read_csv("Prepped_Data/trainWithFeatureEngineering.csv", show_col_types = FALSE)
+testWithFeatureEngineering <- read_csv("Prepped_Data/testWithFeatureEngineering.csv", show_col_types = FALSE)
+
+XGBoostNoFeatureEngineeringPCA <- readRDS('Base_Models/XGBoostNoFeatureEngineeringPCA.rds')
+SVMNoFeatureEngineering <- readRDS('Base_Models/SVMModelNoFeatureEngineering.rds')
+RandomForestWithFeatureEngineering <- readRDS('Base_Models/RandomForestWithFeatureEngineering.rds')
+```
+
+
+```{r}
+
+# --- Generate Base Model Predictions ---
+# For XGBoost and SVM, predictions are assumed to come out directly without extra data transformation.
+preds_train_XGB <- predict(
+  XGBoostNoFeatureEngineeringPCA,
+  newdata = trainNoFeatureEngineeringPCA,
+  type    = "prob"
+)[, 2]
+
+preds_test_XGB  <- predict(
+  XGBoostNoFeatureEngineeringPCA,
+  newdata = testNoFeatureEngineeringPCA,
+  type    = "prob"
+)[, 2]
+
+preds_train_SVM <- predict(SVMNoFeatureEngineering, newdata = trainNoFeatureEngineering, type = "prob")[,2]
+preds_test_SVM  <- predict(SVMNoFeatureEngineering, newdata = testNoFeatureEngineering, type = "prob")[,2]
+
+# For the Random Forest model (using caret, with probability output)
+preds_train_RF <- predict(RandomForestWithFeatureEngineering,
+                          newdata = trainWithFeatureEngineering,
+                          type = "prob")[,2]
+preds_test_RF  <- predict(RandomForestWithFeatureEngineering,
+                          newdata = testWithFeatureEngineering,
+                          type = "prob")[,2]
+```
+
+
+
+
+```{r}
+# --- Build Meta Training and Test Sets ---
+meta_train <- data.frame(
+  XGB   = preds_train_XGB,
+  SVM   = preds_train_SVM,
+  RF    = preds_train_RF,
+  label = trainNoFeatureEngineeringPCA$label
+)
+
+meta_test <- data.frame(
+  XGB   = preds_test_XGB,
+  SVM   = preds_test_SVM,
+  RF    = preds_test_RF,
+  label = testNoFeatureEngineeringPCA$label
+
+)
+
+write.csv(meta_train, "Prepped_Data/StackedTrain.csv", row.names = FALSE)
+write.csv(meta_test, "Prepped_Data/StackedTest.csv", row.names = FALSE)
+```
+
+
+
+
+logistic regression
+```{r}
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggcorrplot)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(knitr)
+library(purrr)
+library(kernlab)
+library(BiocManager)
+library(readr)
+library(doParallel)
+library(EBImage)
+library(pROC)
+# (Optional) Shuffle
+set.seed(100)
+meta_train <- meta_train[sample(nrow(meta_train)), ]
+# ensure it's a factor, but don't remap 0/1
+if (!is.factor(meta_train$label)) {
+  meta_train$label <- factor(meta_train$label)
+}
+
+train_control <- trainControl(
+  method          = "cv",
+  number          = 5,
+  summaryFunction = defaultSummary,
+  classProbs      = TRUE,
+  savePredictions = "all"
+)
+
+# --- Train Meta Learner ---
+set.seed(100)
+meta_model <- train(
+  label ~ .,
+  data     = meta_train,
+  method   = "glm",
+  family   = binomial,
+  metric   = "Accuracy",
+  trControl= train_control
+  #verbosity=0
+)
+
+
+saveRDS(meta_model, file = "Stacked_Models/LogReg.rds")
+cat("Model saved as 'Stacked_Models/LogReg.rds'. To load it later, use:\n")
+cat("loaded_model <- readRDS('Stacked_Models/LogReg.rds')\n\n")
+
+###########################################
+# 2. Save bestTune hyperparameters as CSV
+###########################################
+best_tune_df <- cbind(model = "LogReg", meta_model$bestTune)
+write.csv(best_tune_df, "Stacked_Models_Data/LogReg/BestHyperparams_LogReg.csv", row.names = FALSE)
+cat("BestTune hyperparameters saved as 'Stacked_Models_Data/LogReg/BestHyperparams_LogReg.csv'.\n\n")
+
+###########################################
+# 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
+###########################################
+# Predict on the test set (for class labels)
+predictions <- predict(meta_model, newdata = meta_test)
+
+# 1. Make sure your true labels are a factor, and capture their levels
+meta_test$label <- factor(meta_test$label)
+true_lvls <- levels(meta_test$label)
+print(true_lvls)
+# e.g. [1] "Natural" "Drowsy"
+
+# 2. Inspect what your predictions look like
+str(predictions)
+# If it’s a character vector, coerce to factor first:
+# predictions <- factor(predictions)
+
+# 3. Now force your predictions to have exactly the same levels as the reference:
+predictions <- factor(predictions, levels = true_lvls)
+print(levels(predictions))
+# Should be identical to true_lvls
+
+# 4. If your model never predicted one of the classes, that factor level will now exist 
+#    (with zero counts), which is fine.
+
+# 5. Finally call confusionMatrix:
+conf_matrix <- confusionMatrix(
+  data      = predictions,
+  reference = meta_test$label
+)
+print(conf_matrix)
+
+levels_labels <- levels(meta_test$label)
+if(length(levels_labels) == 2) {
+  positive_class <- levels_labels[1]  # "Drowsy"
+  negative_class <- levels_labels[2]  # "Natural"
+  
+  cm_table <- conf_matrix$table
+  TP <- cm_table[positive_class, positive_class]
+  FP <- cm_table[positive_class, negative_class]
+  FN <- cm_table[negative_class, positive_class]
+  TN <- cm_table[negative_class, negative_class]
+  
+  cm_df <- data.frame(model = "LogReg",
+                      TP = TP,
+                      FP = FP,
+                      FN = FN,
+                      TN = TN)
+  
+  write.csv(cm_df, "Stacked_Models_Data/LogReg/ConfusionMatrix_LogReg.csv", row.names = FALSE)
+  cat("Confusion matrix saved as 'Stacked_Models_Data/LogReg/ConfusionMatrix_LogReg.csv'.\n\n")
+  
+  ###########################################
+  # 4. Calculate and save F1-score, Precision, Recall, Accuracy, and AUC as CSV
+  ###########################################
+  accuracy <- conf_matrix$overall["Accuracy"]
+  recall <- conf_matrix$byClass["Sensitivity"]
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  f1_score <- 2 * (precision * recall) / (precision + recall)
+  
+  # Obtain probability predictions for ROC curve (now that we enabled probabilities)
+  probs <- predict(meta_model, newdata = meta_test, type = "prob")
+  # Use probability for the positive class ("Drowsy")
+  roc_obj <- roc(response = meta_test$label, predictor = probs[[positive_class]])
+  auc_val <- as.numeric(auc(roc_obj))
+  
+  metrics_df <- data.frame(model = "LogReg",
+                           Accuracy = accuracy,
+                           Precision = precision,
+                           Recall = recall,
+                           FOne = f1_score,
+                           AUC = auc_val)
+  
+  write.csv(metrics_df, "Stacked_Models_Data/LogReg/Metrics_LogReg.csv", row.names = FALSE)
+  cat("Performance metrics saved as 'Stacked_Models_Data/LogReg/Metrics_LogReg.csv'.\n")
+  
+  ###########################################
+  # 5. Create and save an AUC ROC plot as a PNG
+  ###########################################
+  # Build data for ROC curve: fpr (1 - specificity) and tpr (sensitivity)
+  roc_data <- data.frame(fpr = 1 - roc_obj$specificities, tpr = roc_obj$sensitivities)
+  
+  write.csv(roc_data, "Stacked_Models_Data/LogReg/ROCData_LogReg.csv", row.names = FALSE)
+  cat("ROC Data for plot building saved as 'Stacked_Models_Data/LogReg/ROCData_LogReg.csv'.\n")
+  
+  # Generate the ROC plot using ggplot2.
+  roc_plot <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+    geom_line(color = "blue") +  # ROC curve in blue
+    geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black") +  # Dotted 45° reference line
+    labs(x = "False Positive Rate (1 - Specificity)",
+         y = "True Positive Rate (Sensitivity)",
+         title = "ROC Curve for SVMWithFeatureEngineering") +
+    theme_minimal() +
+    # Annotate AUC in the top right corner, rounded to 3 significant figures.
+    annotate("text", x = 0.75, y = 0.95, 
+             label = paste("AUC =", format(round(auc_val, 3), nsmall = 3)), 
+             color = "red", size = 5)
+  
+  # Save the ROC plot as a PNG file.
+  ggsave("Stacked_Models_Data/LogReg/ROC_LogReg.png", 
+         plot = roc_plot, width = 7, height = 7, dpi = 300)
+  cat("ROC plot saved as 'Base_Models_Data/SVM/ROC_SVMWithFeatureEngineering.png'.\n")
+  
+} else {
+  cat("Skipping confusion matrix extraction and ROC analysis: classification is not binary.\n")
+}
+```
+
+```{r}
+train_control <- trainControl(
+  method          = "cv",
+  number          = 5,
+  summaryFunction = defaultSummary,
+  classProbs      = TRUE,
+  savePredictions = "all"
+)
+
+# --- Train Meta Learner ---
+set.seed(100)
+meta_model <- train(
+  label ~ .,
+  data     = meta_train,
+  method   = "svmLinear",
+  #family   = binomial,
+  metric   = "Accuracy",
+  trControl= train_control,
+  verbosity=0
+)
+
+
+saveRDS(meta_model, file = "Stacked_Models/LinSVM.rds")
+cat("Model saved as 'Stacked_Models/LinSVM.rds'. To load it later, use:\n")
+cat("loaded_model <- readRDS('Stacked_Models/LinSVM.rds')\n\n")
+
+###########################################
+# 2. Save bestTune hyperparameters as CSV
+###########################################
+best_tune_df <- cbind(model = "LinSVM", meta_model$bestTune)
+write.csv(best_tune_df, "Stacked_Models_Data/LinSVM/BestHyperparams_LinSVM.csv", row.names = FALSE)
+cat("BestTune hyperparameters saved as 'Stacked_Models_Data/LinSVM/BestHyperparams_LinSVM.csv'.\n\n")
+
+###########################################
+# 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
+###########################################
+# Predict on the test set (for class labels)
+predictions <- predict(meta_model, newdata = meta_test)
+
+# 1. Make sure your true labels are a factor, and capture their levels
+meta_test$label <- factor(meta_test$label)
+true_lvls <- levels(meta_test$label)
+print(true_lvls)
+# e.g. [1] "Natural" "Drowsy"
+
+# 2. Inspect what your predictions look like
+str(predictions)
+# If it’s a character vector, coerce to factor first:
+# predictions <- factor(predictions)
+
+# 3. Now force your predictions to have exactly the same levels as the reference:
+predictions <- factor(predictions, levels = true_lvls)
+print(levels(predictions))
+# Should be identical to true_lvls
+
+# 4. If your model never predicted one of the classes, that factor level will now exist 
+#    (with zero counts), which is fine.
+
+# 5. Finally call confusionMatrix:
+conf_matrix <- confusionMatrix(
+  data      = predictions,
+  reference = meta_test$label
+)
+print(conf_matrix)
+
+levels_labels <- levels(meta_test$label)
+if(length(levels_labels) == 2) {
+  positive_class <- levels_labels[1]  # "Drowsy"
+  negative_class <- levels_labels[2]  # "Natural"
+  
+  cm_table <- conf_matrix$table
+  TP <- cm_table[positive_class, positive_class]
+  FP <- cm_table[positive_class, negative_class]
+  FN <- cm_table[negative_class, positive_class]
+  TN <- cm_table[negative_class, negative_class]
+  
+  cm_df <- data.frame(model = "LinSVM",
+                      TP = TP,
+                      FP = FP,
+                      FN = FN,
+                      TN = TN)
+  
+  write.csv(cm_df, "Stacked_Models_Data/LinSVM/ConfusionMatrix_LinSVM.csv", row.names = FALSE)
+  cat("Confusion matrix saved as 'Stacked_Models_Data/LinSVM/ConfusionMatrix_LinSVM.csv'.\n\n")
+  
+  ###########################################
+  # 4. Calculate and save F1-score, Precision, Recall, Accuracy, and AUC as CSV
+  ###########################################
+  accuracy <- conf_matrix$overall["Accuracy"]
+  recall <- conf_matrix$byClass["Sensitivity"]
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  f1_score <- 2 * (precision * recall) / (precision + recall)
+  
+  # Obtain probability predictions for ROC curve (now that we enabled probabilities)
+  probs <- predict(meta_model, newdata = meta_test, type = "prob")
+  # Use probability for the positive class ("Drowsy")
+  roc_obj <- roc(response = meta_test$label, predictor = probs[[positive_class]])
+  auc_val <- as.numeric(auc(roc_obj))
+  
+  metrics_df <- data.frame(model = "LinSVM",
+                           Accuracy = accuracy,
+                           Precision = precision,
+                           Recall = recall,
+                           FOne = f1_score,
+                           AUC = auc_val)
+  
+  write.csv(metrics_df, "Stacked_Models_Data/LinSVM/Metrics_LinSVM.csv", row.names = FALSE)
+  cat("Performance metrics saved as 'Stacked_Models_Data/LinSVM/Metrics_LinSVM.csv'.\n")
+  
+  ###########################################
+  # 5. Create and save an AUC ROC plot as a PNG
+  ###########################################
+  # Build data for ROC curve: fpr (1 - specificity) and tpr (sensitivity)
+  roc_data <- data.frame(fpr = 1 - roc_obj$specificities, tpr = roc_obj$sensitivities)
+  
+  write.csv(roc_data, "Stacked_Models_Data/LinSVM/ROCData_LinSVM.csv", row.names = FALSE)
+  cat("ROC Data for plot building saved as 'Stacked_Models_Data/LinSVM/ROCData_LinSVM.csv'.\n")
+  
+  # Generate the ROC plot using ggplot2.
+  roc_plot <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+    geom_line(color = "blue") +  # ROC curve in blue
+    geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black") +  # Dotted 45° reference line
+    labs(x = "False Positive Rate (1 - Specificity)",
+         y = "True Positive Rate (Sensitivity)",
+         title = "ROC Curve for SVMWithFeatureEngineering") +
+    theme_minimal() +
+    # Annotate AUC in the top right corner, rounded to 3 significant figures.
+    annotate("text", x = 0.75, y = 0.95, 
+             label = paste("AUC =", format(round(auc_val, 3), nsmall = 3)), 
+             color = "red", size = 5)
+  
+  # Save the ROC plot as a PNG file.
+  ggsave("Stacked_Models_Data/LinSVM/ROC_LinSVM.png", 
+         plot = roc_plot, width = 7, height = 7, dpi = 300)
+  cat("ROC plot saved as 'Base_Models_Data/SVM/ROC_SVMWithFeatureEngineering.png'.\n")
+  
+} else {
+  cat("Skipping confusion matrix extraction and ROC analysis: classification is not binary.\n")
+}
+```
+
+XGBoost Stacked
+
+```{r}
+train_control <- trainControl(
+  method          = "cv",
+  number          = 5,
+  summaryFunction = defaultSummary,
+  classProbs      = TRUE,
+  savePredictions = "all"
+)
+
+# --- Train Meta Learner ---
+set.seed(100)
+meta_model <- train(
+  label ~ .,
+  data     = meta_train,
+  method   = "xgbTree",
+  #family   = binomial,
+  metric   = "Accuracy",
+  trControl= train_control,
+  verbosity=0
+)
+
+
+saveRDS(meta_model, file = "Stacked_Models/XGBoost.rds")
+cat("Model saved as 'Stacked_Models/XGBoost.rds'. To load it later, use:\n")
+cat("loaded_model <- readRDS('Stacked_Models/XGBoost.rds')\n\n")
+
+###########################################
+# 2. Save bestTune hyperparameters as CSV
+###########################################
+best_tune_df <- cbind(model = "XGBoost", meta_model$bestTune)
+write.csv(best_tune_df, "Stacked_Models_Data/XGBoost/BestHyperparams_XGBoost.csv", row.names = FALSE)
+cat("BestTune hyperparameters saved as 'Stacked_Models_Data/XGBoost/BestHyperparams_XGBoost.csv'.\n\n")
+
+###########################################
+# 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
+###########################################
+# Predict on the test set (for class labels)
+predictions <- predict(meta_model, newdata = meta_test)
+
+# 1. Make sure your true labels are a factor, and capture their levels
+meta_test$label <- factor(meta_test$label)
+true_lvls <- levels(meta_test$label)
+print(true_lvls)
+# e.g. [1] "Natural" "Drowsy"
+
+# 2. Inspect what your predictions look like
+str(predictions)
+# If it’s a character vector, coerce to factor first:
+# predictions <- factor(predictions)
+
+# 3. Now force your predictions to have exactly the same levels as the reference:
+predictions <- factor(predictions, levels = true_lvls)
+print(levels(predictions))
+# Should be identical to true_lvls
+
+# 4. If your model never predicted one of the classes, that factor level will now exist 
+#    (with zero counts), which is fine.
+
+# 5. Finally call confusionMatrix:
+conf_matrix <- confusionMatrix(
+  data      = predictions,
+  reference = meta_test$label
+)
+print(conf_matrix)
+
+levels_labels <- levels(meta_test$label)
+if(length(levels_labels) == 2) {
+  positive_class <- levels_labels[1]  # "Drowsy"
+  negative_class <- levels_labels[2]  # "Natural"
+  
+  cm_table <- conf_matrix$table
+  TP <- cm_table[positive_class, positive_class]
+  FP <- cm_table[positive_class, negative_class]
+  FN <- cm_table[negative_class, positive_class]
+  TN <- cm_table[negative_class, negative_class]
+  
+  cm_df <- data.frame(model = "XGBoost",
+                      TP = TP,
+                      FP = FP,
+                      FN = FN,
+                      TN = TN)
+  
+  write.csv(cm_df, "Stacked_Models_Data/XGBoost/ConfusionMatrix_XGBoost.csv", row.names = FALSE)
+  cat("Confusion matrix saved as 'Stacked_Models_Data/XGBoost/ConfusionMatrix_XGBoost.csv'.\n\n")
+  
+  ###########################################
+  # 4. Calculate and save F1-score, Precision, Recall, Accuracy, and AUC as CSV
+  ###########################################
+  accuracy <- conf_matrix$overall["Accuracy"]
+  recall <- conf_matrix$byClass["Sensitivity"]
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  f1_score <- 2 * (precision * recall) / (precision + recall)
+  
+  # Obtain probability predictions for ROC curve (now that we enabled probabilities)
+  probs <- predict(meta_model, newdata = meta_test, type = "prob")
+  # Use probability for the positive class ("Drowsy")
+  roc_obj <- roc(response = meta_test$label, predictor = probs[[positive_class]])
+  auc_val <- as.numeric(auc(roc_obj))
+  
+  metrics_df <- data.frame(model = "XGBoost",
+                           Accuracy = accuracy,
+                           Precision = precision,
+                           Recall = recall,
+                           FOne = f1_score,
+                           AUC = auc_val)
+  
+  write.csv(metrics_df, "Stacked_Models_Data/XGBoost/Metrics_XGBoost.csv", row.names = FALSE)
+  cat("Performance metrics saved as 'Stacked_Models_Data/XGBoost/Metrics_XGBoost.csv'.\n")
+  
+  ###########################################
+  # 5. Create and save an AUC ROC plot as a PNG
+  ###########################################
+  # Build data for ROC curve: fpr (1 - specificity) and tpr (sensitivity)
+  roc_data <- data.frame(fpr = 1 - roc_obj$specificities, tpr = roc_obj$sensitivities)
+  
+  write.csv(roc_data, "Stacked_Models_Data/XGBoost/ROCData_XGBoost.csv", row.names = FALSE)
+  cat("ROC Data for plot building saved as 'Stacked_Models_Data/XGBoost/ROCData_XGBoost.csv'.\n")
+  
+  # Generate the ROC plot using ggplot2.
+  roc_plot <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+    geom_line(color = "blue") +  # ROC curve in blue
+    geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black") +  # Dotted 45° reference line
+    labs(x = "False Positive Rate (1 - Specificity)",
+         y = "True Positive Rate (Sensitivity)",
+         title = "ROC Curve for SVMWithFeatureEngineering") +
+    theme_minimal() +
+    # Annotate AUC in the top right corner, rounded to 3 significant figures.
+    annotate("text", x = 0.75, y = 0.95, 
+             label = paste("AUC =", format(round(auc_val, 3), nsmall = 3)), 
+             color = "red", size = 5)
+  
+  # Save the ROC plot as a PNG file.
+  ggsave("Stacked_Models_Data/XGBoost/ROC_XGBoost.png", 
+         plot = roc_plot, width = 7, height = 7, dpi = 300)
+  cat("ROC plot saved as 'Base_Models_Data/SVM/ROC_SVMWithFeatureEngineering.png'.\n")
+  
+} else {
+  cat("Skipping confusion matrix extraction and ROC analysis: classification is not binary.\n")
+}
+```
+
+Random Forest Stacked
+```{r}
+train_control <- trainControl(
+  method          = "cv",
+  number          = 5,
+  summaryFunction = defaultSummary,
+  classProbs      = TRUE,
+  savePredictions = "all"
+)
+
+# --- Train Meta Learner ---
+set.seed(100)
+meta_model <- train(
+  label ~ .,
+  data     = meta_train,
+  method   = "rf",
+  #family   = binomial,
+  metric   = "Accuracy",
+  trControl= train_control,
+  verbosity=0
+)
+
+
+saveRDS(meta_model, file = "Stacked_Models/RandomForest.rds")
+cat("Model saved as 'Stacked_Models/RandomForest.rds'. To load it later, use:\n")
+cat("loaded_model <- readRDS('Stacked_Models/RandomForest.rds')\n\n")
+
+###########################################
+# 2. Save bestTune hyperparameters as CSV
+###########################################
+best_tune_df <- cbind(model = "RandomForest", meta_model$bestTune)
+write.csv(best_tune_df, "Stacked_Models_Data/RandomForest/BestHyperparams_RandomForest.csv", row.names = FALSE)
+cat("BestTune hyperparameters saved as 'Stacked_Models_Data/RandomForest/BestHyperparams_RandomForest.csv'.\n\n")
+
+###########################################
+# 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
+###########################################
+# Predict on the test set (for class labels)
+predictions <- predict(meta_model, newdata = meta_test)
+
+# 1. Make sure your true labels are a factor, and capture their levels
+meta_test$label <- factor(meta_test$label)
+true_lvls <- levels(meta_test$label)
+print(true_lvls)
+# e.g. [1] "Natural" "Drowsy"
+
+# 2. Inspect what your predictions look like
+str(predictions)
+# If it’s a character vector, coerce to factor first:
+# predictions <- factor(predictions)
+
+# 3. Now force your predictions to have exactly the same levels as the reference:
+predictions <- factor(predictions, levels = true_lvls)
+print(levels(predictions))
+# Should be identical to true_lvls
+
+# 4. If your model never predicted one of the classes, that factor level will now exist 
+#    (with zero counts), which is fine.
+
+# 5. Finally call confusionMatrix:
+conf_matrix <- confusionMatrix(
+  data      = predictions,
+  reference = meta_test$label
+)
+print(conf_matrix)
+
+levels_labels <- levels(meta_test$label)
+if(length(levels_labels) == 2) {
+  positive_class <- levels_labels[1]  # "Drowsy"
+  negative_class <- levels_labels[2]  # "Natural"
+  
+  cm_table <- conf_matrix$table
+  TP <- cm_table[positive_class, positive_class]
+  FP <- cm_table[positive_class, negative_class]
+  FN <- cm_table[negative_class, positive_class]
+  TN <- cm_table[negative_class, negative_class]
+  
+  cm_df <- data.frame(model = "RandomForest",
+                      TP = TP,
+                      FP = FP,
+                      FN = FN,
+                      TN = TN)
+  
+  write.csv(cm_df, "Stacked_Models_Data/RandomForest/ConfusionMatrix_RandomForest.csv", row.names = FALSE)
+  cat("Confusion matrix saved as 'Stacked_Models_Data/RandomForest/ConfusionMatrix_RandomForest.csv'.\n\n")
+  
+  ###########################################
+  # 4. Calculate and save F1-score, Precision, Recall, Accuracy, and AUC as CSV
+  ###########################################
+  accuracy <- conf_matrix$overall["Accuracy"]
+  recall <- conf_matrix$byClass["Sensitivity"]
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  f1_score <- 2 * (precision * recall) / (precision + recall)
+  
+  # Obtain probability predictions for ROC curve (now that we enabled probabilities)
+  probs <- predict(meta_model, newdata = meta_test, type = "prob")
+  # Use probability for the positive class ("Drowsy")
+  roc_obj <- roc(response = meta_test$label, predictor = probs[[positive_class]])
+  auc_val <- as.numeric(auc(roc_obj))
+  
+  metrics_df <- data.frame(model = "RandomForest",
+                           Accuracy = accuracy,
+                           Precision = precision,
+                           Recall = recall,
+                           FOne = f1_score,
+                           AUC = auc_val)
+  
+  write.csv(metrics_df, "Stacked_Models_Data/RandomForest/Metrics_RandomForest.csv", row.names = FALSE)
+  cat("Performance metrics saved as 'Stacked_Models_Data/RandomForest/Metrics_RandomForest.csv'.\n")
+  
+  ###########################################
+  # 5. Create and save an AUC ROC plot as a PNG
+  ###########################################
+  # Build data for ROC curve: fpr (1 - specificity) and tpr (sensitivity)
+  roc_data <- data.frame(fpr = 1 - roc_obj$specificities, tpr = roc_obj$sensitivities)
+  
+  write.csv(roc_data, "Stacked_Models_Data/RandomForest/ROCData_RandomForest.csv", row.names = FALSE)
+  cat("ROC Data for plot building saved as 'Stacked_Models_Data/RandomForest/ROCData_RandomForest.csv'.\n")
+  
+  # Generate the ROC plot using ggplot2.
+  roc_plot <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+    geom_line(color = "blue") +  # ROC curve in blue
+    geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black") +  # Dotted 45° reference line
+    labs(x = "False Positive Rate (1 - Specificity)",
+         y = "True Positive Rate (Sensitivity)",
+         title = "ROC Curve for SVMWithFeatureEngineering") +
+    theme_minimal() +
+    # Annotate AUC in the top right corner, rounded to 3 significant figures.
+    annotate("text", x = 0.75, y = 0.95, 
+             label = paste("AUC =", format(round(auc_val, 3), nsmall = 3)), 
+             color = "red", size = 5)
+  
+  # Save the ROC plot as a PNG file.
+  ggsave("Stacked_Models_Data/RandomForest/ROC_RandomForest.png", 
+         plot = roc_plot, width = 7, height = 7, dpi = 300)
+  cat("ROC plot saved as 'Base_Models_Data/SVM/ROC_SVMWithFeatureEngineering.png'.\n")
+  
+} else {
+  cat("Skipping confusion matrix extraction and ROC analysis: classification is not binary.\n")
+}
+```
+
+### Final Plot Constructions
+
+```{R}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path
+base_path <- "Stacked_Models_Data/LogReg/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_LogRegNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "LogRegNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "LogRegCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "LogRegHyperparameters.csv"))
+
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path
+base_path <- "Stacked_Models_Data/LinSVM/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_LinSVMNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "LinSVMNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "LinSVMCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "LinSVMHyperparameters.csv"))
+
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path
+base_path <- "Stacked_Models_Data/XGBoost/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_XGBoostNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "XGBoostNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "XGBoostCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "XGBoostHyperparameters.csv"))
+
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the base path
+base_path <- "Stacked_Models_Data/RandomForest/"
+
+# List files, excluding ROCData and ROC files (only reading Metrics, ConfusionMatrix, and BestHyperparams)
+metrics_files <- list.files(path = base_path, pattern = "^Metrics_.*\\.csv$", full.names = TRUE)
+confusion_files <- list.files(path = base_path, pattern = "^ConfusionMatrix_.*\\.csv$", full.names = TRUE)
+hyperparam_files <- list.files(path = base_path, pattern = "^BestHyperparams_.*\\.csv$", full.names = TRUE)
+
+# Function to extract model label from filename given a specific prefix.
+# For example, for filename "Metrics_RandomForestNoFeatureEngineeringPCA.csv" with prefix "Metrics_",
+# the function will return "RandomForestNoFeatureEngineeringPCA".
+extract_model_label <- function(filename, prefix) {
+  label <- basename(filename)
+  label <- sub(paste0("^", prefix), "", label)
+  label <- sub("\\.csv$", "", label)
+  return(label)
+}
+
+# Create a named vector of confusion files keyed by their extracted model label.
+confusion_map <- setNames(confusion_files, sapply(confusion_files, extract_model_label, prefix = "ConfusionMatrix_"))
+
+# Initialize a list to store the joined classification data frames
+classification_list <- list()
+
+# Loop over each Metrics file and find the corresponding ConfusionMatrix file by an exact filename match.
+for (metrics_file in metrics_files) {
+  # Extract the model label from the Metrics file name.
+  m_model <- extract_model_label(metrics_file, prefix = "Metrics_")
+  
+  # Look up the corresponding ConfusionMatrix file using the full model label.
+  if (m_model %in% names(confusion_map)) {
+    conf_file <- confusion_map[[m_model]]
+    
+    # Read the Metrics CSV and ConfusionMatrix CSV. They already include a "model" column.
+    metrics_df <- read_csv(metrics_file, show_col_types = FALSE)
+    confusion_df <- read_csv(conf_file, show_col_types = FALSE)
+    
+    # Join the two data frames by the "model" column.
+    joined_df <- inner_join(metrics_df, confusion_df, by = "model")
+    
+    # Store the joined data frame in a list.
+    classification_list[[m_model]] <- joined_df
+  } else {
+    warning("No matching ConfusionMatrix file found for model '", m_model, "'.")
+  }
+}
+
+# Rbind (stack) all joined classification reports into one data frame
+combined_classification <- bind_rows(classification_list)
+
+# Read and rbind all BestHyperparams CSV files
+hyperparams_list <- lapply(hyperparam_files, function(file) {
+  read_csv(file, show_col_types = FALSE)
+})
+combined_hyperparameters <- bind_rows(hyperparams_list)
+
+# Write the combined data frames to CSV files
+write_csv(combined_classification, file.path(base_path, "RandomForestCombinedClassificationReport.csv"))
+write_csv(combined_hyperparameters, file.path(base_path, "RandomForestHyperparameters.csv"))
+
+```
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define file paths for each combined classification report
+rf_report <- "Stacked_Models_Data/RandomForest/RandomForestCombinedClassificationReport.csv"
+xgb_report <- "Stacked_Models_Data/XGBoost/XGBoostCombinedClassificationReport.csv"
+svm_report <- "Stacked_Models_Data/LinSVM/LinSVMCombinedClassificationReport.csv"
+logreg_report <- "Stacked_Models_Data/LogReg/LogRegCombinedClassificationReport.csv"
+
+# Read each CSV into a data frame
+rf_df <- read_csv(rf_report, show_col_types = FALSE)
+xgb_df <- read_csv(xgb_report, show_col_types = FALSE)
+svm_df <- read_csv(svm_report, show_col_types = FALSE)
+lr_df <- read_csv(logreg_report, show_col_types = FALSE)
+
+
+# Rbind (stack) the three data frames into one and then sort by accuracy then ROC (both in descending order)
+final_report <- bind_rows(rf_df, xgb_df, svm_df,lr_df) %>%
+  arrange(desc(Accuracy), desc(AUC))
+
+# Define the output path and write the final combined data frame as CSV
+output_path <- "Stacked_Models_Data/FinalStackedModelReport.csv"
+write_csv(final_report, output_path)
+```
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Define file paths for each combined classification report
+rf_report <- "Stacked_Models_Data/RandomForest/RandomForestHyperparameters.csv"
+xgb_report <- "Stacked_Models_Data/XGBoost/XGBoostHyperparameters.csv"
+svm_report <- "Stacked_Models_Data/LinSVM/LinSVMHyperparameters.csv"
+lr_report <- "Stacked_Models_Data/LogReg/LogRegHyperparameters.csv"
+
+# Read each CSV into a data frame
+rf_df <- read_csv(rf_report, show_col_types = FALSE)
+xgb_df <- read_csv(xgb_report, show_col_types = FALSE)
+svm_df <- read_csv(svm_report, show_col_types = FALSE)
+
+
+# Define the output path and write the final combined data frame as CSV
+write_csv(rf_df, "Stacked_Models_Data/RandomForestHyperparameters.csv")
+write_csv(xgb_df, "Stacked_Models_Data/XGBoostHyperparameters.csv")
+write_csv(svm_df, "Stacked_Models_Data/SVMHyperparameters.csv")
+```
+
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(ggplot2)
+
+# 1) Trapezoidal rule for AUC
+calc_auc <- function(x, y) {
+  sum(diff(x) * (head(y, -1) + tail(y, -1)) / 2)
+}
+
+# 2) Define ROCData file paths (in any order) and their descriptive labels
+roc_files <- c(
+  "Stacked_Models_Data/XGBoost/ROCData_XGBoost.csv",
+  "Stacked_Models_Data/LinSVM/ROCData_LinSVM.csv",
+  "Stacked_Models_Data/LogReg/ROCData_LogReg.csv",
+  "Stacked_Models_Data/RandomForest/ROCData_RandomForest.csv"
+)
+
+# We'll map the files to labels initially (the final legend order will follow AUC)
+curve_labels <- c(
+  "Stacked XGBoost",
+  "Stacked Linear SVM",
+  "Stacked Logistic Regression",
+  "Stacked Random Forest"
+)
+
+# 3) Read, compute AUC, store results
+roc_list <- list()
+auc_values <- numeric(length(roc_files))
+
+for(i in seq_along(roc_files)) {
+  df <- read_csv(roc_files[i], show_col_types = FALSE) %>%
+    arrange(fpr)  # ensure ascending fpr
+  
+  this_auc <- calc_auc(df$fpr, df$tpr)
+  auc_values[i] <- this_auc
+  
+  df <- df %>%
+    mutate(AUC = this_auc,
+           Curve = curve_labels[i])
+  
+  roc_list[[i]] <- df
+}
+
+# 4) Combine all ROC data
+roc_data <- bind_rows(roc_list)
+
+# 5) Determine factor order by descending AUC
+auc_summary <- roc_data %>%
+  group_by(Curve) %>%
+  summarize(AUC = unique(AUC), .groups = "drop") %>%
+  arrange(desc(AUC))
+
+# Convert "Curve" to a factor with levels in descending AUC order
+roc_data$Curve <- factor(roc_data$Curve, levels = auc_summary$Curve, ordered = TRUE)
+
+# 6) Define a custom color vector to match the descending AUC order.
+#    Highest AUC -> green, second -> blue, third -> purple, fourth -> red
+color_vec <- c("green", "blue", "purple", "red")
+
+# 7) Build annotation data for bottom-right corner, stacked top-to-bottom
+ann_df <- auc_summary %>%
+  mutate(
+    x = 0.98,
+    # space them out vertically (adjust spacing to taste)
+    y = seq(0.15, by = -0.05, length.out = nrow(auc_summary)),
+    label = paste("AUC =", round(AUC, 3))
+  )
+
+# 8) Plot all curves
+p <- ggplot(
+  roc_data,
+  aes(
+    x = fpr, 
+    y = tpr, 
+    color = Curve,
+    group = Curve  # ensures ggplot doesn't use shapes for grouping
+  )
+) +
+  # Use geom_line with key_glyph="path" to make sure the legend is drawn as lines
+  geom_line(size = 1, key_glyph = "path") +
+  # Diagonal line for no-discrimination
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black") +
+  labs(
+    title = "Stacked model AUC ROC Plot",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    color = "Model"
+  ) +
+  theme_minimal() +
+  # Apply your custom color mapping, in the order of the factor levels
+  scale_color_manual(values = color_vec) +
+  # If a discrete shape scale is being auto-added, turn it off:
+  scale_shape_discrete(guide = "none") +
+  # Force the legend to display only colored lines (no shapes, no letters)
+  guides(color = guide_legend(override.aes = list(
+    shape = NA,        # no shape
+    linetype = 1,      # a regular line
+    key_glyph = "path" # and definitely use a line glyph
+  ))) +
+  # Add AUC text in the bottom-right corner
+  geom_text(
+    data = ann_df,
+    aes(x = x, y = y, label = label, color = Curve),
+    hjust = 1,  # right-align
+    size = 4
+  )
+
+# 9) Save the plot
+ggsave(
+  filename = "PlotsAndPictures/Combined_AUCROCPlots/StackedPlot.png",
+  plot = p,
+  width = 8,
+  height = 6
+)
+
+```
+
+
 {{< pagebreak >}}
 
 # References
