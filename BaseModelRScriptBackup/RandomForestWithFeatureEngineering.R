@@ -1,0 +1,163 @@
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(caret)
+library(ggcorrplot)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(knitr)
+library(purrr)
+library(kernlab)
+library(BiocManager)
+library(readr)
+library(doParallel)
+library(EBImage)
+# Random Forest can be run using caret, so an explicit load of randomForest is optional.
+# library(randomForest)
+# Added for ROC analysis
+library(pROC)
+
+set.seed(100)
+
+# Load training and testing data
+pca_train <- read_csv("Stat380Final/Prepped_Data/trainWithFeatureEngineering.csv", show_col_types = FALSE)
+pca_test  <- read_csv("Stat380Final/Prepped_Data/testWithFeatureEngineering.csv", show_col_types = FALSE)
+
+# Ensure that the target variable is a factor.
+# Reorder levels so that "Drowsy" (the positive class) is first.
+pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
+pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+
+# Set up parallel processing
+num_cores <- parallel::detectCores() - 1  
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+# Define cross-validation method for training.
+# We add classProbs = TRUE and summaryFunction = twoClassSummary to obtain ROC and probability estimates.
+train_control <- trainControl(
+  method = "cv",
+  number = 5,
+  allowParallel = TRUE,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+# Train a Random Forest model using caret's "rf" method
+rf_model <- train(
+  label ~ ., 
+  data = pca_train, 
+  method = "rf", 
+  trControl = train_control,
+  preProcess = NULL,
+  metric = "ROC"  # Optimize model using ROC
+)
+
+# Stop the parallel cluster after training
+stopCluster(cl)
+
+# Print the results and best tuning parameters
+print(rf_model$results)
+print(rf_model$bestTune)
+
+###########################################
+# 1. Save the model and show how to call it later
+###########################################
+saveRDS(rf_model, file = "Stat380Final/Base_Models/RandomForestWithFeatureEngineering.rds")
+cat("Model saved as 'Stat380Final/Base_Models/RandomForestWithFeatureEngineering.rds'. To load it later, use:\n")
+cat("loaded_model <- readRDS('Stat380Final/Base_Models/RandomForestWithFeatureEngineering.rds')\n\n")
+
+###########################################
+# 2. Save bestTune hyperparameters as CSV
+#    (include a column 'model' with the label "RandomForestWithFeatureEngineering")
+###########################################
+best_tune_df <- cbind(model = "RandomForestWithFeatureEngineering", rf_model$bestTune)
+write.csv(best_tune_df, "Stat380Final/Base_Models_Data/Random_Forest/BestHyperparams_RandomForestWithFeatureEngineering.csv", row.names = FALSE)
+cat("BestTune hyperparameters saved as 'Stat380Final/Base_Models_Data/Random_Forest/BestHyperparams_RandomForestWithFeatureEngineering.csv'.\n\n")
+
+###########################################
+# 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
+###########################################
+# Predict on the test set (for class labels)
+predictions <- predict(rf_model, newdata = pca_test)
+
+# Compute the confusion matrix
+conf_matrix <- confusionMatrix(predictions, pca_test$label)
+print(conf_matrix)
+
+# Extract confusion matrix values; assumes binary classification.
+levels_labels <- levels(pca_test$label)
+if(length(levels_labels) == 2) {
+  positive_class <- levels_labels[1]  # "Drowsy"
+  negative_class <- levels_labels[2]  # "Natural"
+  
+  cm_table <- conf_matrix$table
+  TP <- cm_table[positive_class, positive_class]
+  FP <- cm_table[positive_class, negative_class]
+  FN <- cm_table[negative_class, positive_class]
+  TN <- cm_table[negative_class, negative_class]
+  
+  cm_df <- data.frame(model = "RandomForestWithFeatureEngineering",
+                      TP = TP,
+                      FP = FP,
+                      FN = FN,
+                      TN = TN)
+  
+  write.csv(cm_df, "Stat380Final/Base_Models_Data/Random_Forest/ConfusionMatrix_RandomForestWithFeatureEngineering.csv", row.names = FALSE)
+  cat("Confusion matrix saved as 'Stat380Final/Base_Models_Data/Random_Forest/ConfusionMatrix_RandomForestWithFeatureEngineering.csv'.\n\n")
+  
+  ###########################################
+  # 4. Calculate and save F1-score, Precision, Recall, Accuracy, and AUC as CSV
+  ###########################################
+  accuracy  <- conf_matrix$overall["Accuracy"]
+  recall    <- conf_matrix$byClass["Sensitivity"]
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  f1_score  <- 2 * (precision * recall) / (precision + recall)
+  
+  # Obtain probability predictions for ROC curve (type = "prob")
+  probs <- predict(rf_model, newdata = pca_test, type = "prob")
+  # Use probability for the positive class ("Drowsy")
+  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  auc_val <- as.numeric(auc(roc_obj))
+  
+  metrics_df <- data.frame(model = "RandomForestWithFeatureEngineering",
+                           Accuracy = accuracy,
+                           Precision = precision,
+                           Recall = recall,
+                           FOne = f1_score,
+                           AUC = auc_val)
+  
+  write.csv(metrics_df, "Stat380Final/Base_Models_Data/Random_Forest/Metrics_RandomForestWithFeatureEngineering.csv", row.names = FALSE)
+  cat("Performance metrics saved as 'Stat380Final/Base_Models_Data/Random_Forest/Metrics_RandomForestWithFeatureEngineering.csv'.\n")
+  
+  ###########################################
+  # 5. Create and save an AUC ROC plot as a PNG
+  ###########################################
+  # Build ROC data: fpr (1 - specificity) and tpr (sensitivity)
+  roc_data <- data.frame(fpr = 1 - roc_obj$specificities, tpr = roc_obj$sensitivities)
+  
+  write.csv(roc_data, "Stat380Final/Base_Models_Data/Random_Forest/ROCData_RandomForestWithFeatureEngineering.csv", row.names = FALSE)
+  cat("ROC data saved as 'Stat380Final/Base_Models_Data/Random_Forest/ROCData_RandomForestWithFeatureEngineering.csv'.\n")
+  
+  # Generate the ROC plot using ggplot2
+  roc_plot <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+    geom_line(color = "blue") +  # ROC curve in blue
+    geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "black") +  # 45° dotted reference line
+    labs(x = "False Positive Rate (1 - Specificity)",
+         y = "True Positive Rate (Sensitivity)",
+         title = "ROC Curve for RandomForestWithFeatureEngineering") +
+    theme_minimal() +
+    # Annotate AUC in the top right corner (rounded to 3 decimals)
+    annotate("text", x = 0.75, y = 0.95, 
+             label = paste("AUC =", format(round(auc_val, 3), nsmall = 3)), 
+             color = "red", size = 5)
+  
+  # Save the ROC plot as a PNG file
+  ggsave("Stat380Final/Base_Models_Data/Random_Forest/ROC_RandomForestWithFeatureEngineering.png", 
+         plot = roc_plot, width = 7, height = 7, dpi = 300)
+  cat("ROC plot saved as 'Stat380Final/Base_Models_Data/Random_Forest/ROC_RandomForestWithFeatureEngineering.png'.\n")
+  
+} else {
+  cat("Skipping confusion matrix extraction and ROC analysis: classification is not binary.\n")
+}
