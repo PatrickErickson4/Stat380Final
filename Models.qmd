@@ -199,6 +199,9 @@ set.seed(100)
 image_dataset_train <- image_dataset_train[sample(nrow(image_dataset_train)), ]
 image_dataset_test <- image_dataset_test[sample(nrow(image_dataset_test)), ]
 
+mid <- floor(nrow(image_dataset_test) / 2)
+image_dataset_test_ablation <- image_dataset_test[1:mid, ]
+image_dataset_test_stacking <- image_dataset_test[(mid + 1):nrow(image_dataset_test), ]
 ```
 
 ### Preprocessing
@@ -269,7 +272,8 @@ applyFeatureEngineering <- function(df) {
 
 ```{r}
 processedtrain <- applyFeatureEngineering(image_dataset_train)
-processedTest <- applyFeatureEngineering(image_dataset_test)
+processedTestAblation <- applyFeatureEngineering(image_dataset_test_ablation)
+processedTestStacking <- applyFeatureEngineering(image_dataset_test_stacking)
 
 ```
 
@@ -283,7 +287,12 @@ trainNoFeatureEngineering <- image_dataset_train %>%
   select(-image) %>%
   unnest_wider(flat_image, names_sep = "_")
 
-testNoFeatureEngineering <- image_dataset_test %>%
+testNoFeatureEngineeringAblation <- image_dataset_test_ablation %>%
+  mutate(flat_image = map(image, ~ as.vector(t(.)))) %>%
+  select(-image) %>%
+  unnest_wider(flat_image, names_sep = "_")
+
+testNoFeatureEngineeringStacking <- image_dataset_test_stacking %>%
   mutate(flat_image = map(image, ~ as.vector(t(.)))) %>%
   select(-image) %>%
   unnest_wider(flat_image, names_sep = "_")
@@ -295,7 +304,12 @@ trainWithFeatureEngineering <- processedtrain %>%
   select(-image) %>%
   unnest_wider(flat_image, names_sep = "_")
 
-testWithFeatureEngineering <- processedTest %>%
+testWithFeatureEngineeringAblation <- processedTestAblation %>%
+  mutate(flat_image = map(image, ~ as.vector(t(.)))) %>%
+  select(-image) %>%
+  unnest_wider(flat_image, names_sep = "_")
+
+testWithFeatureEngineeringStacking <- processedTestStacking %>%
   mutate(flat_image = map(image, ~ as.vector(t(.)))) %>%
   select(-image) %>%
   unnest_wider(flat_image, names_sep = "_")
@@ -416,7 +430,9 @@ We need to change the scaling back to \[0,1\] after feature engineering.
 ```{r}
 trainWithFeatureEngineering <- trainWithFeatureEngineering %>%
   mutate(across(where(is.numeric), ~ (. - min(.)) / (max(.) - min(.))))
-testWithFeatureEngineering <- testWithFeatureEngineering %>%
+testWithFeatureEngineeringAblation <- testWithFeatureEngineeringAblation %>%
+  mutate(across(where(is.numeric), ~ (. - min(.)) / (max(.) - min(.))))
+testWithFeatureEngineeringStacking <- testWithFeatureEngineeringStacking %>%
   mutate(across(where(is.numeric), ~ (. - min(.)) / (max(.) - min(.))))
 ```
 
@@ -444,10 +460,14 @@ ggsave(
 
 Save our datasets here.
 ```{r}
-write.csv(trainNoFeatureEngineering, file = "Prepped_Data/trainNoFeatureEngineering.csv", row.names = FALSE)
-write.csv(testNoFeatureEngineering, file = "Prepped_Data/testNoFeatureEngineering.csv", row.names = FALSE)
+write.csv(trainNoFeatureEngineering, file =
+"Prepped_Data/trainNoFeatureEngineering.csv", row.names = FALSE)
+write.csv(testNoFeatureEngineeringAblation, file = "Prepped_Data/testNoFeatureEngineeringAblation.csv", row.names = FALSE)
+write.csv(testNoFeatureEngineeringStacking, file = "Prepped_Data/testNoFeatureEngineeringStacking.csv", row.names = FALSE)
+
 write.csv(trainWithFeatureEngineering, file = "Prepped_Data/trainWithFeatureEngineering.csv", row.names = FALSE)
-write.csv(testWithFeatureEngineering, file = "Prepped_Data/testWithFeatureEngineering.csv", row.names = FALSE)
+write.csv(testWithFeatureEngineeringAblation, file = "Prepped_Data/testWithFeatureEngineeringAblation.csv", row.names = FALSE)
+write.csv(testWithFeatureEngineeringStacking, file = "Prepped_Data/testWithFeatureEngineeringStacking.csv", row.names = FALSE)
 ```
 
 ### Do PCA
@@ -493,7 +513,7 @@ scree_plot <- ggplot(pca_df, aes(x = PC)) +
   geom_point(aes(y = CumulativeVariance), color = "red", size = 2) +
   geom_vline(xintercept = n_components, linetype = "dashed", color = "darkgreen") +
   labs(title = "Scree Plot for PCA",
-       subtitle = sprintf("Vertical dashed line indicates %d components (>= %.0f%% variance explained)", n_components, target_threshold*100),
+       subtitle = sprintf("Vertical dashed line indicates %d components (>= %.0f%% variance explained)", n_components, label_threshold*100),
        x = "Principal Component",
        y = "Proportion of Variance Explained") +
   theme_minimal()
@@ -511,7 +531,11 @@ ggsave(
 
 ```{r}
 
-test_numeric <- testNoFeatureEngineering %>%
+test_numeric_ablation <- testNoFeatureEngineeringAblation %>%
+  select(-label) %>%
+  select(where(is.numeric))
+
+test_numeric_stacking <- testNoFeatureEngineeringStacking %>%
   select(-label) %>%
   select(where(is.numeric))
 
@@ -521,16 +545,23 @@ pca_train$label <- trainNoFeatureEngineering$label
 pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
 
 # For the test set:
-scaled_test <- scale(test_numeric, center = pca_result$center, scale = pca_result$scale)
-pca_test_full <- as.data.frame(as.matrix(scaled_test) %*% pca_result$rotation)
-pca_test <- pca_test_full[, 1:183]  
-pca_test$label <- testNoFeatureEngineering$label
-pca_test$label <- factor(pca_test$label, levels = c("Drowsy", "Natural"))
+scaled_test_ablation <- scale(test_numeric_ablation, center = pca_result$center, scale = pca_result$scale)
+pca_test_full_ablation <- as.data.frame(as.matrix(scaled_test_ablation) %*% pca_result$rotation)
+pca_test_ablation <- pca_test_full_ablation[, 1:183]  
+pca_test_ablation$label <- testNoFeatureEngineeringAblation$label
+pca_test_ablation$label <- factor(pca_test_ablation$label, levels = c("Drowsy", "Natural"))
+
+scaled_test_stacking <- scale(test_numeric_stacking, center = pca_result$center, scale = pca_result$scale)
+pca_test_full_stacking <- as.data.frame(as.matrix(scaled_test_stacking) %*% pca_result$rotation)
+pca_test_stacking <- pca_test_full_stacking[, 1:183]  
+pca_test_stacking$label <- testNoFeatureEngineeringStacking$label
+pca_test_stacking$label <- factor(pca_test_stacking$label, levels = c("Drowsy", "Natural"))
 ```
 
 ```{r}
 write.csv(pca_train, file = "Prepped_Data/trainNoFeatureEngineeringPCA.csv", row.names = FALSE)
-write.csv(pca_test, file = "Prepped_Data/testNoFeatureEngineeringPCA.csv", row.names = FALSE)
+write.csv(pca_test_ablation, file = "Prepped_Data/testNoFeatureEngineeringAblationPCA.csv", row.names = FALSE)
+write.csv(pca_test_stacking, file = "Prepped_Data/testNoFeatureEngineeringStackingPCA.csv", row.names = FALSE)
 ```
 
 
@@ -589,7 +620,12 @@ ggsave(
 
 The contrast actually increases the variance a great deal. While this might be helpful for complex models, for simple ML models it could hurt it. 
 ```{r}
-test_numeric <- testWithFeatureEngineering %>%
+
+test_numeric_ablation <- testWithFeatureEngineeringAblation %>%
+  select(-label) %>%
+  select(where(is.numeric))
+
+test_numeric_stacking <- testWithFeatureEngineeringStacking %>%
   select(-label) %>%
   select(where(is.numeric))
 
@@ -599,17 +635,24 @@ pca_train$label <- trainWithFeatureEngineering$label
 pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
 
 # For the test set:
-scaled_test <- scale(test_numeric, center = pca_result$center, scale = pca_result$scale)
-pca_test_full <- as.data.frame(as.matrix(scaled_test) %*% pca_result$rotation)
-pca_test <- pca_test_full[, 1:1313]  # subset to the first 183 principal components
-pca_test$label <- testWithFeatureEngineering$label
-pca_test$label <- factor(pca_test$label, levels = c("Drowsy", "Natural"))
+scaled_test_ablation <- scale(test_numeric_ablation, center = pca_result$center, scale = pca_result$scale)
+pca_test_full_ablation <- as.data.frame(as.matrix(scaled_test_ablation) %*% pca_result$rotation)
+pca_test_ablation <- pca_test_full_ablation[, 1:1313]  
+pca_test_ablation$label <- testWithFeatureEngineeringAblation$label
+pca_test_ablation$label <- factor(pca_test_ablation$label, levels = c("Drowsy", "Natural"))
+
+scaled_test_stacking <- scale(test_numeric_stacking, center = pca_result$center, scale = pca_result$scale)
+pca_test_full_stacking <- as.data.frame(as.matrix(scaled_test_stacking) %*% pca_result$rotation)
+pca_test_stacking <- pca_test_full_stacking[, 1:1313]  
+pca_test_stacking$label <- testWithFeatureEngineeringStacking$label
+pca_test_stacking$label <- factor(pca_test_stacking$label, levels = c("Drowsy", "Natural"))
 
 ```
 
 ```{r}
 write.csv(pca_train, file = "Prepped_Data/trainWithFeatureEngineeringPCA.csv", row.names = FALSE)
-write.csv(pca_test, file = "Prepped_Data/testWithFeatureEngineeringPCA.csv", row.names = FALSE)
+write.csv(pca_test_ablation, file = "Prepped_Data/testWithFeatureEngineeringAblationPCA.csv", row.names = FALSE)
+write.csv(pca_test_stacking, file = "Prepped_Data/testWithFeatureEngineeringStackingPCA.csv", row.names = FALSE)
 ```
 
 ### Model Ablation Study
@@ -639,13 +682,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test <- read_csv("Prepped_Data/testNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testNoFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # If necessary, reorder levels so that "Drowsy" is the positive class.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -666,7 +709,7 @@ train_control <- trainControl(
 # The additional argument prob.model = TRUE ensures that ksvm computes probabilities.
 svm_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "svmRadial", 
   trControl = train_control,
   preProcess = NULL,
@@ -700,15 +743,15 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/SVM/BestHyperparams_SVM
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(svm_model, newdata = pca_test)
+predictions <- predict(svm_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix table; assumes binary classification.
 # Here we define the first level as the positive class ("Drowsy").
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -737,9 +780,9 @@ if(length(levels_labels) == 2) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (now that we enabled probabilities)
-  probs <- predict(svm_model, newdata = pca_test, type = "prob")
+  probs <- predict(svm_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "SVMNoFeatureEngineeringPCA",
@@ -810,13 +853,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test <- read_csv("Prepped_Data/testNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testNoFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" is the positive class.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -836,7 +879,7 @@ train_control <- trainControl(
 # Train an XGBoost model using caret's xgbTree method
 xgb_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "xgbTree", 
   trControl = train_control,
   preProcess = NULL,
@@ -869,15 +912,15 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/XGBoost/BestHyperparams
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(xgb_model, newdata = pca_test)
+predictions <- predict(xgb_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix table; assumes binary classification.
 # Here we define the first level as the positive class ("Drowsy").
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -906,9 +949,9 @@ if(length(levels_labels) == 2) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (ensure type = "prob")
-  probs <- predict(xgb_model, newdata = pca_test, type = "prob")
+  probs <- predict(xgb_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "XGBoostNoFeatureEngineeringPCA",
@@ -980,13 +1023,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test  <- read_csv("Prepped_Data/testNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test  <- read_csv("Prepped_Data/testNoFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" (the positive class) is first.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -1006,7 +1049,7 @@ train_control <- trainControl(
 # Train a Random Forest model using caret's "rf" method
 rf_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "rf", 
   trControl = train_control,
   preProcess = NULL,
@@ -1039,14 +1082,14 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/Random_Forest/BestHyper
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(rf_model, newdata = pca_test)
+predictions <- predict(rf_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix values; assumes binary classification.
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -1075,9 +1118,9 @@ if(length(levels_labels) == 2) {
   f1_score  <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (type = "prob")
-  probs <- predict(rf_model, newdata = pca_test, type = "prob")
+  probs <- predict(rf_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "RandomForestNoFeatureEngineeringPCA",
@@ -1147,13 +1190,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test <- read_csv("Prepped_Data/testWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testWithFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # If necessary, reorder levels so that "Drowsy" is the positive class.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -1174,7 +1217,7 @@ train_control <- trainControl(
 # The additional argument prob.model = TRUE ensures that ksvm computes probabilities.
 svm_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "svmRadial", 
   trControl = train_control,
   preProcess = NULL,
@@ -1208,15 +1251,15 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/SVM/BestHyperparams_SVM
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(svm_model, newdata = pca_test)
+predictions <- predict(svm_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix table; assumes binary classification.
 # Here we define the first level as the positive class ("Drowsy").
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -1245,9 +1288,9 @@ if(length(levels_labels) == 2) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (now that we enabled probabilities)
-  probs <- predict(svm_model, newdata = pca_test, type = "prob")
+  probs <- predict(svm_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "SVMWithFeatureEngineeringPCA",
@@ -1318,13 +1361,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test <- read_csv("Prepped_Data/testWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testWithFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" is the positive class.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -1344,7 +1387,7 @@ train_control <- trainControl(
 # Train an XGBoost model using caret's xgbTree method
 xgb_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "xgbTree", 
   trControl = train_control,
   preProcess = NULL,
@@ -1377,15 +1420,15 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/XGBoost/BestHyperparams
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(xgb_model, newdata = pca_test)
+predictions <- predict(xgb_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix table; assumes binary classification.
 # Here we define the first level as the positive class ("Drowsy").
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -1414,9 +1457,9 @@ if(length(levels_labels) == 2) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (ensure type = "prob")
-  probs <- predict(xgb_model, newdata = pca_test, type = "prob")
+  probs <- predict(xgb_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "XGBoostWithFeatureEngineeringPCA",
@@ -1489,13 +1532,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test  <- read_csv("Prepped_Data/testWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test  <- read_csv("Prepped_Data/testWithFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" (the positive class) is first.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -1515,7 +1558,7 @@ train_control <- trainControl(
 # Train a Random Forest model using caret's "rf" method
 rf_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "rf", 
   trControl = train_control,
   preProcess = NULL,
@@ -1548,14 +1591,14 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/Random_Forest/BestHyper
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(rf_model, newdata = pca_test)
+predictions <- predict(rf_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix values; assumes binary classification.
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -1584,9 +1627,9 @@ if(length(levels_labels) == 2) {
   f1_score  <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (type = "prob")
-  probs <- predict(rf_model, newdata = pca_test, type = "prob")
+  probs <- predict(rf_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "RandomForestWithFeatureEngineeringPCA",
@@ -1658,7 +1701,7 @@ set.seed(100)
 
 # Load training and testing data
 train <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
-test <- read_csv("Prepped_Data/testNoFeatureEngineering.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testNoFeatureEngineeringAblation.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # If necessary, reorder levels so that "Drowsy" is the positive class.
@@ -1827,13 +1870,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
-pca_test <- read_csv("Prepped_Data/testNoFeatureEngineering.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testNoFeatureEngineeringAblation.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" is the positive class.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -1853,7 +1896,7 @@ train_control <- trainControl(
 # Train an XGBoost model using caret's xgbTree method
 xgb_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "xgbTree", 
   trControl = train_control,
   preProcess = NULL,
@@ -1886,15 +1929,15 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/XGBoost/BestHyperparams
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(xgb_model, newdata = pca_test)
+predictions <- predict(xgb_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix table; assumes binary classification.
 # Here we define the first level as the positive class ("Drowsy").
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -1923,9 +1966,9 @@ if(length(levels_labels) == 2) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (ensure type = "prob")
-  probs <- predict(xgb_model, newdata = pca_test, type = "prob")
+  probs <- predict(xgb_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "XGBoostNoFeatureEngineering",
@@ -1998,13 +2041,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
-pca_test  <- read_csv("Prepped_Data/testNoFeatureEngineering.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
+test  <- read_csv("Prepped_Data/testNoFeatureEngineeringAblation.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" (the positive class) is first.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -2024,7 +2067,7 @@ train_control <- trainControl(
 # Train a Random Forest model using caret's "rf" method
 rf_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "rf", 
   trControl = train_control,
   preProcess = NULL,
@@ -2057,14 +2100,14 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/Random_Forest/BestHyper
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(rf_model, newdata = pca_test)
+predictions <- predict(rf_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix values; assumes binary classification.
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -2093,9 +2136,9 @@ if(length(levels_labels) == 2) {
   f1_score  <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (type = "prob")
-  probs <- predict(rf_model, newdata = pca_test, type = "prob")
+  probs <- predict(rf_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "RandomForestNoFeatureEngineering",
@@ -2166,7 +2209,7 @@ set.seed(100)
 
 # Load training and testing data
 train <- read_csv("Prepped_Data/trainWithFeatureEngineering.csv", show_col_types = FALSE)
-test <- read_csv("Prepped_Data/testWithFeatureEngineering.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testWithFeatureEngineeringAblation.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # If necessary, reorder levels so that "Drowsy" is the positive class.
@@ -2336,13 +2379,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
-pca_test <- read_csv("Prepped_Data/testWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainWithFeatureEngineeringPCA.csv", show_col_types = FALSE)
+test <- read_csv("Prepped_Data/testWithFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" is the positive class.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -2362,7 +2405,7 @@ train_control <- trainControl(
 # Train an XGBoost model using caret's xgbTree method
 xgb_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "xgbTree", 
   trControl = train_control,
   preProcess = NULL,
@@ -2395,15 +2438,15 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/XGBoost/BestHyperparams
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(xgb_model, newdata = pca_test)
+predictions <- predict(xgb_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix table; assumes binary classification.
 # Here we define the first level as the positive class ("Drowsy").
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -2432,9 +2475,9 @@ if(length(levels_labels) == 2) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (ensure type = "prob")
-  probs <- predict(xgb_model, newdata = pca_test, type = "prob")
+  probs <- predict(xgb_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "XGBoostWithFeatureEngineering",
@@ -2507,13 +2550,13 @@ library(pROC)
 set.seed(100)
 
 # Load training and testing data
-pca_train <- read_csv("Prepped_Data/trainWithFeatureEngineering.csv", show_col_types = FALSE)
-pca_test  <- read_csv("Prepped_Data/testWithFeatureEngineering.csv", show_col_types = FALSE)
+train <- read_csv("Prepped_Data/trainWithFeatureEngineering.csv", show_col_types = FALSE)
+test  <- read_csv("Prepped_Data/testWithFeatureEngineeringAblation.csv", show_col_types = FALSE)
 
 # Ensure that the target variable is a factor.
 # Reorder levels so that "Drowsy" (the positive class) is first.
-pca_train$label <- factor(pca_train$label, levels = c("Drowsy", "Natural"))
-pca_test$label  <- factor(pca_test$label,  levels = c("Drowsy", "Natural"))
+train$label <- factor(train$label, levels = c("Drowsy", "Natural"))
+test$label  <- factor(test$label,  levels = c("Drowsy", "Natural"))
 
 # Set up parallel processing
 num_cores <- parallel::detectCores() - 1  
@@ -2533,7 +2576,7 @@ train_control <- trainControl(
 # Train a Random Forest model using caret's "rf" method
 rf_model <- train(
   label ~ ., 
-  data = pca_train, 
+  data = train, 
   method = "rf", 
   trControl = train_control,
   preProcess = NULL,
@@ -2566,14 +2609,14 @@ cat("BestTune hyperparameters saved as 'Base_Models_Data/Random_Forest/BestHyper
 # 3. Make predictions and create confusion matrix CSV with TP, FP, FN, TN
 ###########################################
 # Predict on the test set (for class labels)
-predictions <- predict(rf_model, newdata = pca_test)
+predictions <- predict(rf_model, newdata = test)
 
 # Compute the confusion matrix
-conf_matrix <- confusionMatrix(predictions, pca_test$label)
+conf_matrix <- confusionMatrix(predictions, test$label)
 print(conf_matrix)
 
 # Extract confusion matrix values; assumes binary classification.
-levels_labels <- levels(pca_test$label)
+levels_labels <- levels(test$label)
 if(length(levels_labels) == 2) {
   positive_class <- levels_labels[1]  # "Drowsy"
   negative_class <- levels_labels[2]  # "Natural"
@@ -2602,9 +2645,9 @@ if(length(levels_labels) == 2) {
   f1_score  <- 2 * (precision * recall) / (precision + recall)
   
   # Obtain probability predictions for ROC curve (type = "prob")
-  probs <- predict(rf_model, newdata = pca_test, type = "prob")
+  probs <- predict(rf_model, newdata = test, type = "prob")
   # Use probability for the positive class ("Drowsy")
-  roc_obj <- roc(response = pca_test$label, predictor = probs[[positive_class]])
+  roc_obj <- roc(response = test$label, predictor = probs[[positive_class]])
   auc_val <- as.numeric(auc(roc_obj))
   
   metrics_df <- data.frame(model = "RandomForestWithFeatureEngineering",
@@ -2649,7 +2692,6 @@ if(length(levels_labels) == 2) {
 }
 
 ```
-
 
 ### Data Metrics Combining
 SVM classification report construction and best hyperparameter csv construction
@@ -3301,12 +3343,12 @@ library(pROC)
 # Additional libraries for the current code block
 library(xgboost)       # For XGBoost-related functionality
 library(randomForest) 
-trainNoFeatureEngineeringPCA <- read_csv("Prepped_Data/trainNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
-testNoFeatureEngineeringPCA <- read_csv("Prepped_Data/testNoFeatureEngineeringPCA.csv", show_col_types = FALSE)
-trainNoFeatureEngineering <- read_csv("Prepped_Data/trainNoFeatureEngineering.csv", show_col_types = FALSE)
-testNoFeatureEngineering <- read_csv("Prepped_Data/testNoFeatureEngineering.csv", show_col_types = FALSE)
-trainWithFeatureEngineering <- read_csv("Prepped_Data/trainWithFeatureEngineering.csv", show_col_types = FALSE)
-testWithFeatureEngineering <- read_csv("Prepped_Data/testWithFeatureEngineering.csv", show_col_types = FALSE)
+trainNoFeatureEngineeringPCA <- read_csv("Prepped_Data/testNoFeatureEngineeringAblationPCA.csv", show_col_types = FALSE)
+testNoFeatureEngineeringPCA <- read_csv("Prepped_Data/testNoFeatureEngineeringStackingPCA.csv", show_col_types = FALSE)
+trainNoFeatureEngineering <- read_csv("Prepped_Data/testNoFeatureEngineeringAblation.csv", show_col_types = FALSE)
+testNoFeatureEngineering <- read_csv("Prepped_Data/testNoFeatureEngineeringStacking.csv", show_col_types = FALSE)
+trainWithFeatureEngineering <- read_csv("Prepped_Data/testWithFeatureEngineeringAblation.csv", show_col_types = FALSE)
+testWithFeatureEngineering <- read_csv("Prepped_Data/testWithFeatureEngineeringStacking.csv", show_col_types = FALSE)
 
 XGBoostNoFeatureEngineeringPCA <- readRDS('Base_Models/XGBoostNoFeatureEngineeringPCA.rds')
 SVMNoFeatureEngineering <- readRDS('Base_Models/SVMModelNoFeatureEngineering.rds')
