@@ -1,2 +1,8 @@
 # Stat380Final
-Final Project for Stat380 on Drowsy Driving classification. This is a proof of concept.
+---
+
+Final Project for Stat380 on Drowsy Driving classification. This for reproducing our results.
+
+If you wish to repopulate the tables, run Models.qmd. YOU DO NOT NEED TO RENDER. 1.qmd and 2.qmd are there to construct a code appendix. Stat380Final.qmd is our actual report.
+
+### **NOTE:** Reproducing this data might be extremely computationally expensive. Expect this to run for multiple hours. 
