@@ -1,0 +1,2 @@
+"model","Accuracy","Precision","Recall","FOne","AUC"
+"SVMNoFeatureEngineering",0.859649122807018,1,0.736708860759494,0.848396501457726,0.985234506475452

@@ -1,0 +1,2 @@
+"model","Accuracy","Precision","Recall","FOne","AUC"
+"RandomForestNoFeatureEngineering",0.724696356275304,0.994818652849741,0.486075949367089,0.653061224489796,0.969547084217458

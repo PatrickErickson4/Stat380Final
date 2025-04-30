@@ -1,0 +1,5 @@
+model,nrounds,max_depth,eta,gamma,colsample_bytree,min_child_weight,subsample
+XGBoostNoFeatureEngineering,150,3,0.4,0,0.6,1,1
+XGBoostNoFeatureEngineeringPCA,150,3,0.3,0,0.8,1,1
+XGBoostWithFeatureEngineering,150,3,0.3,0,0.6,1,1
+XGBoostWithFeatureEngineeringPCA,150,3,0.3,0,0.8,1,1
